@@ -55,6 +55,8 @@ def plot(df, figsize=(14, 7), zoom=None, actions=None):
     plt.xlabel('Index')
     plt.ylabel('Close Price')
     plt.legend(loc='best')
+    # Add horizontal and vertical grid lines
+    plt.grid(which='both')
 
     # Show the plot
     plt.show()
@@ -121,31 +123,36 @@ def generate_actions(df, profit_ratio, horizon):
     # Create a new column for actions and initialize it to 'hold'
     df['action'] = 'hold'
 
+    # Convert the 'close' column to a numpy array for efficient indexing
+    close_prices = df['close'].values
+
     # For each row, check the 'horizon' number of rows in the past
     for i in range(len(df)):
         # Initialize the action as hold
         action = 'hold'
-        current_price = df.loc[i, 'close']
+        current_price = close_prices[i]
 
         # Check every point within the horizon
         for j in range(1, horizon):
             # Get the price before 'j' number of rows
-            past_price = df.loc[i - j, 'close'] if i - j >= 0 else np.NAN
+            past_price = close_prices[i - j] if i - j >= 0 else np.nan
 
             # Calculate the percentage change from the current price to the past price
-            pct_change = (past_price - current_price) / current_price * 100
+            pct_change = (past_price - current_price) / past_price * 100
 
-            future_price = df.loc[i + j, 'close'] if i + j <= len(df) - horizon else np.NAN
+            future_price = close_prices[i + j] if i + j < len(df) else np.nan
 
-            # Calculate the percentage change from the current price to the past price
-            fct_change = (future_price - current_price) / future_price * 100
+            # Calculate the percentage change from the current price to the future price
+            fct_change = (future_price - current_price) / current_price * 100
 
             # If the percentage change is greater than or equal to 'profit_ratio', mark a 'buy' action
             if pct_change >= profit_ratio or fct_change >= profit_ratio:
                 action = 'buy'
+                break  # We can break the loop as soon as we find a 'buy' action
             # If the percentage change is less than or equal to '-profit_ratio', mark a 'sell' action
             elif pct_change <= -profit_ratio or fct_change <= -profit_ratio:
                 action = 'sell'
+                break  # We can break the loop as soon as we find a 'sell' action
 
         # Set the action for the current row
         df.loc[i, 'action'] = action
@@ -168,6 +175,8 @@ def preprocessing(filename, resample=None, profit_ratio=15, horizon=12,
     plot_actions (bool): Whether to plot the points of action.
     """
 
+    start = timeit.default_timer()
+
     # Load the data
     df = pd.read_csv(filename)
 
@@ -183,6 +192,9 @@ def preprocessing(filename, resample=None, profit_ratio=15, horizon=12,
     df_actions = generate_actions(df, profit_ratio, horizon)
     end_time = timeit.default_timer()
     print(f"Adding actions column took {end_time - start_time:.2f} seconds.")
+
+    end = timeit.default_timer()
+    print(f"preprocessing took {end - start:.2f} seconds.")
 
     # Plot prices and actions if required
     if plot_prices:
