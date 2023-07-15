@@ -2,63 +2,93 @@ import timeit
 import numpy as np
 import pandas as pd
 import dask.dataframe as dd
-from matplotlib import pyplot as plt
+from matplotlib import pyplot as plt, gridspec
 
 
-def plot(df, figsize=(14, 7), zoom=None, actions=None):
+def plot(df, figsize=(14, 7), zoom=None, actions=None, indicators=None):
     """
     Plots the closing prices and optionally highlights the points of action (buy or sell).
+    Can also plot the specified indicators.
 
     Args:
     df (DataFrame): Data to plot.
     figsize (tuple): Figure size.
     zoom (list): Range of indices to zoom in on (ex: [200, 300]).
     actions (bool): Whether to plot the points of action.
+    indicators (list): List of indicators to plot from ['ATR', 'MA_20', 'MA_100', 'MA_200', 'RSI'].
     """
 
-    # Create a new figure with the given size
-    plt.figure(figsize=figsize)
+    # List of all possible indicators
+    all_indicators = ['ATR', 'MA_20', 'MA_100', 'MA_200', 'RSI']
 
-    # If a zoom range is specified, only plot data within this range
-    # and highlight points of action if required
+    # If no specific indicators are provided, show all
+    if indicators is None:
+        indicators = all_indicators
+
+    # Separate MA indicators to plot on the main chart
+    ma_indicators = [ind for ind in indicators if "MA" in ind]
+    other_indicators = [ind for ind in indicators if ind not in ma_indicators]
+
+    # Create a gridspec with the specified heights
+    gs = gridspec.GridSpec(4, 1, height_ratios=[1, 2, 1, 1])
+
+    fig = plt.figure(figsize=figsize)
+
+    # Create the subplots
+    ax_atr = plt.subplot(gs[0])
+    ax_price = plt.subplot(gs[1], sharex=ax_atr)
+    ax_rsi = plt.subplot(gs[2], sharex=ax_atr)
+
+    # Hide x labels and tick labels for all but bottom plot
+    plt.setp(ax_atr.get_xticklabels(), visible=False)
+    plt.setp(ax_price.get_xticklabels(), visible=False)
+
+    # Plot close prices and MA indicators
     if zoom:
-        plt.plot(df.loc[zoom[0]:zoom[1], 'close'], label='Close Price', color='blue')
-
-        if actions:
-            buy_points = df[(df['action'] == 'buy') & (df.index >= zoom[0]) & (df.index <= zoom[1])]
-            plt.scatter(buy_points.index, buy_points['close'], color='green', label='Buy', marker='^', alpha=1)
-
-            sell_points = df[(df['action'] == 'sell') & (df.index >= zoom[0]) & (df.index <= zoom[1])]
-            plt.scatter(sell_points.index, sell_points['close'], color='red', label='Sell', marker='v', alpha=1)
-
-            plt.title(f'Buy and Sell Points (Index {zoom[0]} to {zoom[1]})')
-
-    # If no zoom range is specified, plot all data
-    # and highlight points of action if required
+        ax_price.plot(df.loc[zoom[0]:zoom[1], 'close'], label='Close Price', color='blue')
+        for ma in ma_indicators:
+            ax_price.plot(df.loc[zoom[0]:zoom[1], ma], label=ma)
     else:
-        plt.plot(df['close'], label='Close Price', color='blue')
+        ax_price.plot(df['close'], label='Close Price', color='blue')
+        for ma in ma_indicators:
+            ax_price.plot(df[ma], label=ma)
 
-        if actions:
+    ax_price.set_ylabel('Close Price / MA')
+    ax_price.legend(loc='best')
+    ax_price.grid(which='both')
+
+    # Plot other indicators
+    for indicator in other_indicators:
+        if indicator == 'ATR':
+            ax = ax_atr
+        elif indicator == 'RSI':
+            ax = ax_rsi
+        else:
+            continue
+
+        if zoom:
+            ax.plot(df.loc[zoom[0]:zoom[1], indicator], label=indicator)
+        else:
+            ax.plot(df[indicator], label=indicator)
+
+        ax.set_ylabel(indicator)
+        ax.legend(loc='best')
+        ax.grid(which='both')
+
+    # Plot actions (buy/sell points)
+    if actions:
+        if zoom:
+            buy_points = df[(df['action'] == 'buy') & (df.index >= zoom[0]) & (df.index <= zoom[1])]
+            sell_points = df[(df['action'] == 'sell') & (df.index >= zoom[0]) & (df.index <= zoom[1])]
+        else:
             buy_points = df[df['action'] == 'buy']
-            plt.scatter(buy_points.index, buy_points['close'], color='green', label='Buy', marker='^', alpha=1)
-
             sell_points = df[df['action'] == 'sell']
-            plt.scatter(sell_points.index, sell_points['close'], color='red', label='Sell', marker='v', alpha=1)
 
-            plt.title('Buy and Sell Points')
+        ax_price.scatter(buy_points.index, buy_points['close'], color='green', label='Buy', marker='^', alpha=1)
+        ax_price.scatter(sell_points.index, sell_points['close'], color='red', label='Sell', marker='v', alpha=1)
 
-    # Add title if no actions are to be plotted
-    if not actions:
-        plt.title('Buy and Sell Points')
-
-    # Set labels and legend
     plt.xlabel('Index')
-    plt.ylabel('Close Price')
-    plt.legend(loc='best')
-    # Add horizontal and vertical grid lines
-    plt.grid(which='both')
-
-    # Show the plot
+    plt.tight_layout()
     plt.show()
 
 
@@ -153,8 +183,58 @@ def generate_actions(df, profit_ratio, horizon):
     return df
 
 
+def calculate_atr(data, n=14):
+    data['high_low'] = data['high'] - data['low']
+    data['high_prev_close'] = abs(data['high'] - data['close'].shift())
+    data['low_prev_close'] = abs(data['low'] - data['close'].shift())
+
+    true_range = data[['high_low', 'high_prev_close', 'low_prev_close']].max(axis=1)
+    atr = true_range.rolling(n).mean()
+
+    data.drop(['high_low', 'high_prev_close', 'low_prev_close'], axis=1, inplace=True)
+
+    return atr
+
+
+def calculate_moving_average(data, window):
+    return data['close'].rolling(window).mean()
+
+
+def calculate_rsi(data, n=14):
+    delta = data['close'].diff()
+    up, down = delta.copy(), delta.copy()
+    up[up < 0] = 0
+    down[down > 0] = 0
+
+    average_gain = up.rolling(n).mean()
+    average_loss = abs(down.rolling(n).mean())
+
+    rs = average_gain / average_loss
+    rsi = 100 - (100 / (1 + rs))
+
+    return rsi
+
+
+def add_indicators(data):
+    # Ensure data is a pandas DataFrame
+    if not isinstance(data, pd.DataFrame):
+        data = pd.DataFrame(data)
+
+    # Add Average True Range (ATR)
+    data['ATR'] = calculate_atr(data)
+
+    # Add Moving Average (20, 100, 200)
+    for window in [20, 100, 200]:
+        data[f'MA_{window}'] = calculate_moving_average(data, window)
+
+    # Add Relative Strength Index (RSI)
+    data['RSI'] = calculate_rsi(data)
+
+    return data
+
+
 def preprocessing(filename, resample=None, profit_ratio=15, horizon=12,
-                  plot_prices=False, plot_zoom=None, plot_actions=True):
+                  indicators=None, plot_prices=False, plot_zoom=None, plot_actions=True):
     """
     Preprocesses the data, including resampling and generating actions column.
 
@@ -190,9 +270,13 @@ def preprocessing(filename, resample=None, profit_ratio=15, horizon=12,
     end_time = timeit.default_timer()
     print(f"Adding actions column took {end_time - start_time:.2f} seconds.")
 
+    # Add the indicators to the data
+    data_with_indicators = add_indicators(df_actions)
+
     end = timeit.default_timer()
     print(f"preprocessing took {end - start:.2f} seconds.")
 
     # Plot prices and actions if required
     if plot_prices:
-        plot(df_actions, figsize=(14, 7), zoom=plot_zoom, actions=plot_actions)
+        plot(data_with_indicators, figsize=(14, 7), zoom=plot_zoom, actions=plot_actions,
+             indicators=indicators)
