@@ -134,8 +134,7 @@ def generate_actions(df, profit_ratio, horizon):
             # Calculate the percentage change from the current price to the past price
             pct_change = (past_price - current_price) / past_price * 100
 
-            future_price = close_prices[i + j] if i + j < len(df) else np.nan
-
+            future_price = close_prices[i + j] if i + j < len(close_prices) - 1 else np.nan
             # Calculate the percentage change from the current price to the future price
             fct_change = (future_price - current_price) / current_price * 100
 
