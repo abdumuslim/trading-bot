@@ -74,20 +74,14 @@ def resample_data(data, freq):
     DataFrame: Resampled data.
     """
 
-    # Create a copy of the data
-    data_copy = data.copy()
-
-    # Sort the data by date in ascending order
-    data_copy.sort_values('date', inplace=True)
-
     # Convert the 'date' column to datetime
-    data_copy['date'] = pd.to_datetime(data_copy['date'])
+    data['date'] = pd.to_datetime(data['date'])
 
     # Set 'date' as the index
-    data_copy.set_index('date', inplace=True)
+    data.set_index('date', inplace=True)
 
     # Convert pandas DataFrame to Dask DataFrame
-    ddata = dd.from_pandas(data_copy, npartitions=2)
+    ddata = dd.from_pandas(data, npartitions=2)
 
     # Resample each column to the desired frequency
     open_data = ddata['open'].resample(freq).first().compute()
@@ -179,6 +173,10 @@ def preprocessing(filename, resample=None, profit_ratio=15, horizon=12,
 
     # Load the data
     df = pd.read_csv(filename)
+
+    # Sort the data by date in ascending order
+    df.sort_values('date', inplace=True, ascending=True)
+    df.reset_index(drop=True, inplace=True)
 
     if resample:
         # Resample the data to different frequencies
