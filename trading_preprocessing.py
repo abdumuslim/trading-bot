@@ -2,94 +2,146 @@ import timeit
 import numpy as np
 import pandas as pd
 import dask.dataframe as dd
-from matplotlib import pyplot as plt, gridspec
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 
-def plot(df, figsize=(14, 7), zoom=None, actions=None, indicators=None):
+def plot(df, chart_type='line', figsize=(1400, 700), zoom=None, actions=None, indicators=None,
+         show_candle_patterns=True, show_chart_patterns=True):
     """
-    Plots the closing prices and optionally highlights the points of action (buy or sell).
-    Can also plot the specified indicators.
+    Plot data with different indicators, actions, and patterns on an interactive chart.
 
     Args:
-    df (DataFrame): Data to plot.
-    figsize (tuple): Figure size.
-    zoom (list): Range of indices to zoom in on (ex: [200, 300]).
-    actions (bool): Whether to plot the points of action.
-    indicators (list): List of indicators to plot from ['ATR', 'MA_20', 'MA_100', 'MA_200', 'RSI'].
+        df (pd.DataFrame): Input data.
+        chart_type (str): Type of chart to plot, either 'line' or 'candle'.
+        figsize (tuple): Size of the figure.
+        zoom (tuple): Range of data to zoom in on.
+        actions (list): List of actions to annotate on the chart.
+        indicators (list): List of indicators to plot ['MA_20', 'MA_50', 'MA_100', 'MA_200', 'RSI', 'ATR'].
+        show_candle_patterns (bool): Whether to show candlestick patterns.
+        show_chart_patterns (bool): Whether to show chart patterns.
+
+    Raises:
+        ValueError: If chart_type is not 'line' or 'candle'.
     """
 
-    # List of all possible indicators
-    all_indicators = ['ATR', 'MA_20', 'MA_100', 'MA_200', 'RSI']
+    if chart_type not in ['line', 'candle']:
+        raise ValueError('Invalid chart_type: Expected "line" or "candle"')
 
-    # If no specific indicators are provided, show all
-    if indicators is None:
-        indicators = all_indicators
-
-    # Separate MA indicators to plot on the main chart
-    ma_indicators = [ind for ind in indicators if "MA" in ind]
-    other_indicators = [ind for ind in indicators if ind not in ma_indicators]
-
-    # Create a gridspec with the specified heights
-    gs = gridspec.GridSpec(4, 1, height_ratios=[1, 2, 1, 1])
-
-    fig = plt.figure(figsize=figsize)
-
-    # Create the subplots
-    ax_atr = plt.subplot(gs[0])
-    ax_price = plt.subplot(gs[1], sharex=ax_atr)
-    ax_rsi = plt.subplot(gs[2], sharex=ax_atr)
-
-    # Hide x labels and tick labels for all but bottom plot
-    plt.setp(ax_atr.get_xticklabels(), visible=False)
-    plt.setp(ax_price.get_xticklabels(), visible=False)
-
-    # Plot close prices and MA indicators
     if zoom:
-        ax_price.plot(df.loc[zoom[0]:zoom[1], 'close'], label='Close Price', color='blue')
-        for ma in ma_indicators:
-            ax_price.plot(df.loc[zoom[0]:zoom[1], ma], label=ma)
+        df = df.loc[zoom[0]:zoom[1], :]
+
+    if indicators:
+        # Create subplots, including a subplot for ATR at the top, RSI if needed and the main chart
+        if 'RSI' in indicators and 'ATR' in indicators:
+            indicators.remove('RSI')
+            indicators.remove('ATR')
+            fig = make_subplots(rows=4, cols=1, row_heights=[0.55, 0.15, 0.15, 0.15],
+                                subplot_titles=('Prices', 'Volume', 'ATR', 'RSI'), vertical_spacing=0.08)
+
+            fig.add_trace(go.Scatter(x=df.index, y=df['ATR'], mode='lines', name='ATR', line=dict(width=1.5)), row=3, col=1)
+            fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], mode='lines', name='RSI', line=dict(width=1.5)), row=4, col=1)
+            fig.add_shape(go.layout.Shape(type="line", yref="y4", xref="x4",
+                                          x0=min(df.index), y0=70, x1=max(df.index), y1=70,
+                                          line=dict(color="Red", width=1, dash="dash")), row=4, col=1)
+            fig.add_shape(go.layout.Shape(type="line", yref="y4", xref="x4",
+                                          x0=min(df.index), y0=30, x1=max(df.index), y1=30,
+                                          line=dict(color="Red", width=1, dash="dash")), row=4, col=1)
+
+        elif 'ATR' in indicators:
+            indicators.remove('ATR')
+            fig = make_subplots(rows=3, cols=1, row_heights=[0.7, 0.15, 0.15],
+                                subplot_titles=('Prices', 'Volume', 'ATR'), vertical_spacing=0.08)
+            fig.add_trace(go.Scatter(x=df.index, y=df['ATR'], mode='lines', name='ATR', line=dict(width=1.5)), row=3, col=1)
+
+        elif 'RSI' in indicators:
+            indicators.remove('RSI')
+            fig = make_subplots(rows=3, cols=1, row_heights=[0.7, 0.15, 0.15],
+                                subplot_titles=('Prices', 'Volume', 'RSI'), vertical_spacing=0.08)
+            fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], mode='lines', name='RSI',
+                                     line=dict(width=1.5)), row=3, col=1)
+            fig.add_shape(go.layout.Shape(type="line", yref="y3", xref="x3",
+                                          x0=min(df.index), y0=70, x1=max(df.index), y1=70,
+                                          line=dict(color="Red", width=1, dash="dash")), row=3, col=1)
+            fig.add_shape(go.layout.Shape(type="line", yref="y3", xref="x3",
+                                          x0=min(df.index), y0=30, x1=max(df.index), y1=30,
+                                          line=dict(color="Red", width=1, dash="dash")), row=3, col=1)
+
+        else:
+            fig = make_subplots(rows=2, cols=1, row_heights=[0.8, 0.2],
+                                subplot_titles=('Prices', 'Volume'), vertical_spacing=0.08)
+            # Add indicators
+        for ind in indicators:
+            fig.add_trace(go.Scatter(x=df.index, y=df[ind], mode='lines', name=ind, line=dict(width=1.5)),
+                          row=1, col=1)
+
     else:
-        ax_price.plot(df['close'], label='Close Price', color='blue')
-        for ma in ma_indicators:
-            ax_price.plot(df[ma], label=ma)
+        fig = make_subplots(rows=2, cols=1, row_heights=[0.8, 0.2],
+                            subplot_titles=('Prices', 'Volume'), vertical_spacing=0.08)
 
-    ax_price.set_ylabel('Close Price / MA')
-    ax_price.legend(loc='best')
-    ax_price.grid(which='both')
+    if chart_type == 'candle':
+        fig.add_trace(
+            go.Candlestick(x=df.index, open=df['open'], high=df['high'], low=df['low'], close=df['close'], name='OHLC'),
+            row=1, col=1)
 
-    # Plot other indicators
-    for indicator in other_indicators:
-        if indicator == 'ATR':
-            ax = ax_atr
-        elif indicator == 'RSI':
-            ax = ax_rsi
-        else:
-            continue
+    else:
+        fig.add_trace(go.Scatter(x=df.index, y=df['close'], mode='lines', name='Close',
+                                 line=dict(width=2.5, color='black')), row=1, col=1)
 
-        if zoom:
-            ax.plot(df.loc[zoom[0]:zoom[1], indicator], label=indicator)
-        else:
-            ax.plot(df[indicator], label=indicator)
+    # Create Volume Bar chart
+    colors = df.close.diff().apply(lambda x: 'green' if x >= 0 else 'red')
+    fig.add_trace(go.Bar(x=df.index, y=df['volume'], marker=dict(color=colors), name='Volume'), row=2, col=1)
 
-        ax.set_ylabel(indicator)
-        ax.legend(loc='best')
-        ax.grid(which='both')
-
-    # Plot actions (buy/sell points)
+    # Add actions
     if actions:
-        if zoom:
-            buy_points = df[(df['action'] == 'buy') & (df.index >= zoom[0]) & (df.index <= zoom[1])]
-            sell_points = df[(df['action'] == 'sell') & (df.index >= zoom[0]) & (df.index <= zoom[1])]
-        else:
-            buy_points = df[df['action'] == 'buy']
-            sell_points = df[df['action'] == 'sell']
+        if 'buy' in df['action'].values:
+            fig.add_trace(
+                go.Scatter(x=df[df['action'] == 'buy'].index, y=df[df['action'] == 'buy']['close'], mode='markers',
+                           name='Buy', marker=dict(symbol='triangle-up', size=10, color='green', line_width=1)),
+                row=1, col=1)
+        if 'sell' in df['action'].values:
+            fig.add_trace(
+                go.Scatter(x=df[df['action'] == 'sell'].index, y=df[df['action'] == 'sell']['close'], mode='markers',
+                           name='Sell', marker=dict(symbol='triangle-down', size=10, color='red', line_width=1)),
+                row=1, col=1)
 
-        ax_price.scatter(buy_points.index, buy_points['close'], color='green', label='Buy', marker='^', alpha=1)
-        ax_price.scatter(sell_points.index, sell_points['close'], color='red', label='Sell', marker='v', alpha=1)
+    # Add candlestick patterns
+    if show_candle_patterns:
+        patterns = {
+            'Hammer': 'circle',
+            'Bullish_Engulfing': 'star',
+            'Bearish_Engulfing': 'x',
+            'Close_Above_Candle': 'triangle-up',
+            'Close_Below_Candle': 'triangle-down'
+        }
+        for pattern, symbol in patterns.items():
+            if pattern in df.columns and df[pattern].any():
+                fig.add_trace(
+                    go.Scatter(x=df[df[pattern] == True].index, y=df[df[pattern] == True]['close'], mode='markers',
+                               name=pattern, marker=dict(symbol=symbol, size=10, color='orange', line_width=1)),
+                    row=1, col=1)
 
-    plt.xlabel('Index')
-    plt.tight_layout()
-    plt.show()
+    if show_chart_patterns:
+        # Add chart patterns
+        chart_patterns = {
+            'Double_Top': 'diamond',
+            'Double_Bottom': 'diamond-open',
+            'Flag_Pattern': 'x-thin',
+            'Ascending_Wedge': 'y-up',
+            'Descending_Wedge': 'y-down'
+        }
+        for pattern, symbol in chart_patterns.items():
+            if pattern in df.columns and df[pattern].any():
+                fig.add_trace(
+                    go.Scatter(x=df[df[pattern] == True].index, y=df[df[pattern] == True]['close'], mode='markers',
+                               name=pattern, marker=dict(symbol=symbol, size=10, color='purple', line_width=1)),
+                    row=1, col=1)
+
+    # Update layout
+    fig.update_layout(height=figsize[1], width=figsize[0],
+                      title_text="Interactive Chart with Indicators, Actions and Patterns",
+                      xaxis_rangeslider_visible=False)
+    fig.show()
 
 
 def resample_data(data, freq):
@@ -197,7 +249,11 @@ def calculate_atr(data, n=14):
 
 
 def calculate_moving_average(data, window):
-    return data['close'].rolling(window).mean()
+    moving_avg = data['close'].rolling(window).mean()
+    first_valid_index = moving_avg.first_valid_index()
+    first_valid_value = moving_avg.loc[first_valid_index]
+    moving_avg.fillna(first_valid_value, inplace=True)
+    return moving_avg
 
 
 def calculate_rsi(data, n=14):
@@ -223,18 +279,116 @@ def add_indicators(data):
     # Add Average True Range (ATR)
     data['ATR'] = calculate_atr(data)
 
-    # Add Moving Average (20, 100, 200)
-    for window in [20, 100, 200]:
+    # Add Moving Average (20, 50, 100, 200)
+    for window in [20, 50, 100, 200]:
         data[f'MA_{window}'] = calculate_moving_average(data, window)
 
     # Add Relative Strength Index (RSI)
     data['RSI'] = calculate_rsi(data)
 
+    # Drop rows with NaN values
+    data.dropna(inplace=True)
+
+    # Reset index
+    data.reset_index(drop=True, inplace=True)
+
+    return data
+
+
+def identify_candle_patterns(data):
+    # Add empty columns for the patterns
+    data['Hammer'] = False
+    data['Bullish_Engulfing'] = False
+    data['Bearish_Engulfing'] = False
+    data['Close_Above_Candle'] = False
+    data['Close_Below_Candle'] = False
+
+    for i in range(1, len(data)):
+        # Identify Hammer
+        body = abs(data.loc[i, 'open'] - data.loc[i, 'close'])
+        whole_candle = data.loc[i, 'high'] - data.loc[i, 'low']
+
+        # Green Hammer
+        if (data.loc[i, 'close'] > data.loc[i, 'open']) and \
+                ((min(data.loc[i, 'open'], data.loc[i, 'close']) - data.loc[i, 'low']) >= 2 * body) and \
+                (body / whole_candle >= 0) and (body / whole_candle <= 0.382):
+            data.loc[i, 'Hammer'] = True
+        # Red Hammer
+        elif (data.loc[i, 'open'] > data.loc[i, 'close']) and \
+                ((data.loc[i, 'high'] - min(data.loc[i, 'open'], data.loc[i, 'close'])) >= 2 * body) and \
+                (body / whole_candle >= 0) and (body / whole_candle <= 0.382):
+            data.loc[i, 'Hammer'] = True
+
+        # Identify Bullish Engulfing
+        if (data.loc[i - 1, 'open'] > data.loc[i - 1, 'close']) and \
+                (data.loc[i, 'open'] < data.loc[i, 'close']) and \
+                (data.loc[i - 1, 'open'] >= data.loc[i, 'close']) and \
+                (data.loc[i - 1, 'close'] <= data.loc[i, 'open']):
+            data.loc[i, 'Bullish_Engulfing'] = True
+
+        # Identify Bearish Engulfing
+        if (data.loc[i - 1, 'open'] < data.loc[i - 1, 'close']) and \
+                (data.loc[i, 'open'] > data.loc[i, 'close']) and \
+                (data.loc[i - 1, 'close'] >= data.loc[i, 'open']) and \
+                (data.loc[i - 1, 'open'] <= data.loc[i, 'close']):
+            data.loc[i, 'Bearish_Engulfing'] = True
+
+        # Identify Close Above/Below Candle
+        if data.loc[i, 'close'] > data.loc[i - 1, 'high']:
+            data.loc[i, 'Close_Above_Candle'] = True
+        elif data.loc[i, 'close'] < data.loc[i - 1, 'low']:
+            data.loc[i, 'Close_Below_Candle'] = True
+
+    return data
+
+
+def identify_chart_patterns(data, tolerance=0.01):
+    # Add empty columns for the patterns
+    data['Double_Top'] = False
+    data['Double_Bottom'] = False
+    data['Flag_Pattern'] = False
+    data['Ascending_Wedge'] = False
+    data['Descending_Wedge'] = False
+
+    # Identify Double Tops and Bottoms
+    data['min'] = data['low'].rolling(window=3, center=True).min()
+    data['max'] = data['high'].rolling(window=3, center=True).max()
+    data['local_min'] = data['low'] == data['min']
+    data['local_max'] = data['high'] == data['max']
+    for i in range(3, len(data)):
+        if data.loc[i, 'local_max'] and data.loc[i-3, 'local_max'] and \
+           abs(data.loc[i, 'high'] - data.loc[i-3, 'high']) / data.loc[i-3, 'high'] < tolerance:
+            data.loc[i, 'Double_Top'] = True
+        if data.loc[i, 'local_min'] and data.loc[i-3, 'local_min'] and \
+           abs(data.loc[i, 'low'] - data.loc[i-3, 'low']) / data.loc[i-3, 'low'] < tolerance:
+            data.loc[i, 'Double_Bottom'] = True
+
+    # Identify Flag Patterns
+    data['volatility'] = data['high'] - data['low']
+    data['above_MA20'] = data['close'] > data['MA_20']
+    for i in range(1, len(data)):
+        if data.loc[i, 'volatility'] < data.loc[i-1, 'volatility'] and data.loc[i, 'above_MA20']:
+            data.loc[i, 'Flag_Pattern'] = True
+
+    # Identify Ascending and Descending Wedges
+    data['high_change'] = data['high'].pct_change()
+    data['low_change'] = data['low'].pct_change()
+    for i in range(1, len(data)):
+        if data.loc[i, 'high_change'] > data.loc[i, 'low_change']:
+            data.loc[i, 'Ascending_Wedge'] = True
+        if data.loc[i, 'low_change'] > data.loc[i, 'high_change']:
+            data.loc[i, 'Descending_Wedge'] = True
+
+    # Drop auxiliary columns
+    data.drop(['min', 'max', 'local_min', 'local_max', 'volatility', 'above_MA20', 'high_change', 'low_change'], axis=1, inplace=True)
+
     return data
 
 
 def preprocessing(filename, resample=None, profit_ratio=15, horizon=12,
-                  indicators=None, plot_prices=False, plot_zoom=None, plot_actions=True):
+                  indicators=None, plot_prices=False, plot_zoom=None, plot_actions=True, chart_type='line',
+                  candle_patterns=False, chart_patterns=True):
+
     """
     Preprocesses the data, including resampling and generating actions column.
 
@@ -266,17 +420,44 @@ def preprocessing(filename, resample=None, profit_ratio=15, horizon=12,
 
     # Generate actions column (sell, buy, hold)
     start_time = timeit.default_timer()
-    df_actions = generate_actions(df, profit_ratio, horizon)
+    df = generate_actions(df, profit_ratio, horizon)
     end_time = timeit.default_timer()
     print(f"Adding actions column took {end_time - start_time:.2f} seconds.")
 
-    # Add the indicators to the data
-    data_with_indicators = add_indicators(df_actions)
+    if indicators:
+        # Add the indicators to the data
+        start_time = timeit.default_timer()
+        df = add_indicators(df)
+        if 'all' in indicators:
+            indicators = ['MA_20', 'MA_50', 'MA_100', 'MA_200', 'RSI', 'ATR']
+        else:
+            indicators = [ind for ind in indicators if ind in df.columns]
+
+        end_time = timeit.default_timer()
+        print(f"Adding indicators column took {end_time - start_time:.2f} seconds.")
+
+    if candle_patterns:
+        # Add the indicators to the data
+        start_time = timeit.default_timer()
+        df = identify_candle_patterns(df)
+        end_time = timeit.default_timer()
+        print(f"Adding candle patterns column took {end_time - start_time:.2f} seconds.")
+
+    if chart_patterns:
+        if indicators and 'MA_20' in indicators:
+            # Add the indicators to the data
+            start_time = timeit.default_timer()
+            df = identify_chart_patterns(df)
+            end_time = timeit.default_timer()
+            print(f"Adding chart patterns column took {end_time - start_time:.2f} seconds.")
+        else:
+            print("Cannot make chart patterns without 'MA_20' indicator")
 
     end = timeit.default_timer()
     print(f"preprocessing took {end - start:.2f} seconds.")
 
+    df = df[200:]
     # Plot prices and actions if required
     if plot_prices:
-        plot(data_with_indicators, figsize=(14, 7), zoom=plot_zoom, actions=plot_actions,
-             indicators=indicators)
+        plot(df, chart_type=chart_type, figsize=(1400, 700), zoom=plot_zoom, actions=plot_actions,
+             indicators=indicators, show_candle_patterns=candle_patterns, show_chart_patterns=chart_patterns)
