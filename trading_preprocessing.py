@@ -16,7 +16,7 @@ def plot(df, chart_type='line', figsize=(1400, 700), zoom=None, actions=None, in
         chart_type (str): Type of chart to plot, either 'line' or 'candle'.
         figsize (tuple): Size of the figure.
         zoom (tuple): Range of data to zoom in on.
-        actions (list): List of actions to annotate on the chart.
+        actions (bool): whether to show actions (buy/sell) on the chart.
         indicators (list): List of indicators to plot ['MA_20', 'MA_50', 'MA_100', 'MA_200', 'RSI', 'ATR'].
         show_candle_patterns (bool): Whether to show candlestick patterns.
         show_chart_patterns (bool): Whether to show chart patterns.
@@ -461,3 +461,7 @@ def preprocessing(filename, resample=None, profit_ratio=15, horizon=12,
     if plot_prices:
         plot(df, chart_type=chart_type, figsize=(1400, 700), zoom=plot_zoom, actions=plot_actions,
              indicators=indicators, show_candle_patterns=candle_patterns, show_chart_patterns=chart_patterns)
+
+    return df
+
+
