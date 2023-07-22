@@ -221,13 +221,22 @@ def generate_actions(df, profit_ratio, horizon):
             fct_change = (future_price - current_price) / current_price * 100
 
             # If the percentage change is greater than or equal to 'profit_ratio', mark a 'buy' action
-            if pct_change >= profit_ratio or fct_change >= profit_ratio:
+            if fct_change >= profit_ratio:
                 action = 'buy'
                 break  # We can break the loop as soon as we find a 'buy' action
-            # If the percentage change is less than or equal to '-profit_ratio', mark a 'sell' action
-            elif pct_change <= -profit_ratio or fct_change <= -profit_ratio:
+
+            elif fct_change <= -profit_ratio:
                 action = 'sell'
                 break  # We can break the loop as soon as we find a 'sell' action
+
+            # if pct_change >= profit_ratio:
+            #     action = 'buy'
+            #     break  # We can break the loop as soon as we find a 'buy' action
+            #
+            # # If the percentage change is less than or equal to '-profit_ratio', mark a 'sell' action
+            # elif pct_change <= -profit_ratio:
+            #     action = 'sell'
+            #     break  # We can break the loop as soon as we find a 'sell' action
 
         # Set the action for the current row
         df.loc[i, 'action'] = action
@@ -418,21 +427,15 @@ def preprocessing(filename, resample=None, profit_ratio=15, horizon=12,
         end_time = timeit.default_timer()
         print(f"Resampling took {end_time - start_time:.2f} seconds.")
 
-    # Generate actions column (sell, buy, hold)
-    start_time = timeit.default_timer()
-    df = generate_actions(df, profit_ratio, horizon)
-    end_time = timeit.default_timer()
-    print(f"Adding actions column took {end_time - start_time:.2f} seconds.")
-
     if indicators:
         # Add the indicators to the data
         start_time = timeit.default_timer()
-        df = add_indicators(df)
         if 'all' in indicators:
             indicators = ['MA_20', 'MA_50', 'MA_100', 'MA_200', 'RSI', 'ATR']
         else:
-            indicators = [ind for ind in indicators if ind in df.columns]
+            indicators = [ind for ind in indicators if ind in ['MA_20', 'MA_50', 'MA_100', 'MA_200', 'RSI', 'ATR']]
 
+        df = add_indicators(df)
         end_time = timeit.default_timer()
         print(f"Adding indicators column took {end_time - start_time:.2f} seconds.")
 
@@ -453,10 +456,17 @@ def preprocessing(filename, resample=None, profit_ratio=15, horizon=12,
         else:
             print("Cannot make chart patterns without 'MA_20' indicator")
 
+    # Generate actions column (sell, buy, hold)
+    start_time = timeit.default_timer()
+    df = generate_actions(df, profit_ratio, horizon)
+    end_time = timeit.default_timer()
+    print(f"Adding actions column took {end_time - start_time:.2f} seconds.")
+
     end = timeit.default_timer()
     print(f"preprocessing took {end - start:.2f} seconds.")
 
-    df = df[200:]
+    df = df[200:len(df) - horizon + 68]
+
     # Plot prices and actions if required
     if plot_prices:
         plot(df, chart_type=chart_type, figsize=(1400, 700), zoom=plot_zoom, actions=plot_actions,
