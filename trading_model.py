@@ -2,36 +2,30 @@ import tensorflow as tf
 from matplotlib import pyplot as plt
 from tensorflow.keras import layers, Model, Sequential
 from sklearn.preprocessing import MinMaxScaler, LabelEncoder
-from sklearn.model_selection import train_test_split
 from tensorflow.keras.utils import to_categorical
-from tensorflow.keras.layers import LSTM, Dense, Input
-from tensorflow.keras.optimizers import Adam, SGD
-from tensorflow.keras.layers import Dropout, MaxPool1D, Flatten, GRU, Bidirectional, Dropout, GlobalMaxPooling1D, Conv1D
-from tensorflow.keras.regularizers import l1_l2
+from tensorflow.keras.layers import Flatten, Dense, Input
+from tensorflow.keras.optimizers import SGD
 from tensorflow.keras.callbacks import LearningRateScheduler
-import math
 from imblearn.over_sampling import RandomOverSampler
 import numpy as np
 import pandas as pd
 
 
-# from tensorflow.keras import mixed_precision
-# mixed_precision.set_global_policy(policy="mixed_float16") # set global policy to mixed precision
-# mixed_precision.global_policy() # should output "mixed_float16" (if your GPU is compatible with mixed precision)
-
-def lr_schedule(epoch):
-    start_lr = 0.05
-    end_lr = 0.001
-    period = 25
-    if epoch < 60 + 25:  # For the first 60 epochs
-        lr = start_lr - (epoch // period) * 0.01
-    else:  # From the 61st epoch onward
-        lr = 0.01 - ((epoch - 60) // period) * 0.001
-    return max(lr, end_lr)
-
-
-# Create the LearningRateScheduler callback
-lr_callback = LearningRateScheduler(lr_schedule)
+def lr_update(epoch):
+    if epoch < 25:
+        return 0.05
+    elif epoch < 50:
+        return 0.04
+    elif epoch < 150:
+        return 0.01
+    elif epoch < 250:
+        return 0.009
+    elif epoch < 400:
+        return 0.005
+    elif epoch < 500:
+        return 0.004
+    else:
+        return 0.001
 
 
 # Update the plot_loss_curves function
@@ -159,7 +153,6 @@ def dense_model(X_train, size):
 
 
 def trading_model(df, test_size=0.2, epochs=250, batch_size=128, time_steps=128, learning_rate=0.01):
-
     X_train, train_dataset, val_dataset = df_to_datasets(batch_size, df, test_size, time_steps)
 
     size = 1024
@@ -168,6 +161,9 @@ def trading_model(df, test_size=0.2, epochs=250, batch_size=128, time_steps=128,
 
     # Compile the model with a specified learning rate
     model.compile(optimizer=SGD(learning_rate=learning_rate), loss='categorical_crossentropy', metrics=['accuracy'])
+
+    # Create the LearningRateScheduler callback
+    lr_callback = LearningRateScheduler(lr_update)
 
     # Add the callback to the fit method
     history = model.fit(x=train_dataset, epochs=epochs, batch_size=batch_size, validation_data=val_dataset,

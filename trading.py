@@ -10,6 +10,6 @@ df = preprocessing('Datasets/SOLUSDT_2022_2023_min.csv', resample='1h',
 
 # df.to_csv('Datasets/processed_data1.csv', index=False)
 
-trading_model(df, batch_size=time_steps, epochs=300, test_size=0.2, time_steps=time_steps, learning_rate=0.05)
+trading_model(df, batch_size=time_steps, epochs=600, test_size=0.2, time_steps=time_steps)
 
 
