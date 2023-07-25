@@ -1,3 +1,5 @@
+import os
+
 import tensorflow as tf
 from matplotlib import pyplot as plt
 from tensorflow.keras import layers, Model, Sequential
@@ -12,13 +14,13 @@ import pandas as pd
 
 
 def lr_update(epoch):
-    if epoch < 25:
+    if epoch < 35:
         return 0.05
-    elif epoch < 50:
+    elif epoch < 70:
         return 0.04
-    elif epoch < 150:
+    elif epoch < 220:
         return 0.01
-    elif epoch < 250:
+    elif epoch < 300:
         return 0.009
     elif epoch < 400:
         return 0.005
@@ -140,6 +142,32 @@ def df_to_datasets(batch_size, df, test_size, time_steps):
     return X_train, train_dataset, val_dataset
 
 
+def create_model_callbacks(model_name, check_point=False, early_stopping=False, reduce_lr=False, custom_lr=True,
+                           save_path="model_experiments", monitor="val_accuracy", checkpoint_verbose=1,
+                           early_stop_patience=5, learning_rate_patience=500,
+                           learning_rate_factor=0.1, learning_rate_verbose=1):
+    callbacks = []
+
+    if check_point:
+        callbacks.append(tf.keras.callbacks.ModelCheckpoint(filepath=os.path.join(save_path, model_name),
+                                                            verbose=checkpoint_verbose,
+                                                            save_best_only=True,
+                                                            save_weights_only=False,
+                                                            monitor=monitor))
+    if early_stopping:
+        callbacks.append(tf.keras.callbacks.EarlyStopping(monitor=monitor, patience=early_stop_patience,
+                                                          restore_best_weights=True))
+    if reduce_lr:
+        callbacks.append(tf.keras.callbacks.ReduceLROnPlateau(monitor=monitor, patience=learning_rate_patience,
+                                                              factor=learning_rate_factor,
+                                                              verbose=learning_rate_verbose))
+
+    if custom_lr:
+        callbacks.append(LearningRateScheduler(lr_update))
+
+    return callbacks
+
+
 def dense_model(X_train, size):
     # Define the Dense model
     model = Sequential([
@@ -148,27 +176,53 @@ def dense_model(X_train, size):
         Dense(size, activation='relu'),
         Flatten(),
         Dense(3, activation='softmax')  # Since we have three classes
-    ])
+    ], name="trading")
     return model
 
 
-def trading_model(df, test_size=0.2, epochs=250, batch_size=128, time_steps=128, learning_rate=0.01):
+def trading_model(df, use_model="Dense", test_size=0.2, epochs=250, batch_size=128, time_steps=128, learning_rate=0.01,
+                  checkpoint_verbose=True):
     X_train, train_dataset, val_dataset = df_to_datasets(batch_size, df, test_size, time_steps)
 
     size = 1024
 
+    if use_model == "ensemble":
+        n_models = 5  # Number of models in the ensemble
+
+        models, histories = [
+            ensemble_model(X_train, size, epochs, batch_size, learning_rate, train_dataset, val_dataset)
+            for _ in range(n_models)]
+
+    else:
+        model = dense_model(X_train, size)
+
+        # Compile the model with a specified learning rate
+        model.compile(optimizer=SGD(learning_rate=learning_rate), loss='categorical_crossentropy', metrics=['accuracy'])
+
+        # Create the LearningRateScheduler callback
+        lr_callback = LearningRateScheduler(lr_update)
+
+        # Add the callback to the fit method
+        history = model.fit(x=train_dataset, epochs=epochs, batch_size=batch_size, validation_data=val_dataset,
+                            callbacks=[lr_callback])
+
+        model.save("model_experiments/trading.h5")
+        model = tf.keras.models.load_model(os.path.join("model_experiments", f"{model.name}.h5"))
+
+        print(f"\nvalidation accuracy: {model.evaluate(val_dataset)[1] * 100:.2f}%")
+
+        # Plot the learning rate versus loss
+        plot_loss_curves(history)
+
+
+def ensemble_model(X_train, size, epochs, batch_size, learning_rate, train_dataset, val_dataset):
     model = dense_model(X_train, size)
 
-    # Compile the model with a specified learning rate
     model.compile(optimizer=SGD(learning_rate=learning_rate), loss='categorical_crossentropy', metrics=['accuracy'])
 
-    # Create the LearningRateScheduler callback
     lr_callback = LearningRateScheduler(lr_update)
 
-    # Add the callback to the fit method
     history = model.fit(x=train_dataset, epochs=epochs, batch_size=batch_size, validation_data=val_dataset,
                         callbacks=[lr_callback])
 
-    # Plot the learning rate versus loss
-    plot_loss_curves(history)
-
+    return model, history
